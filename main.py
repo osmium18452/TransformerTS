@@ -163,16 +163,10 @@ if __name__ == '__main__':
     maxx, minn = None, None
     if normalize == 'std':
         std, mean = data_preprocessor.load_std_and_mean()
-        valid_original_gt = valid_gt.transpose(1,2) * std + mean
-        test_original_gt = test_gt.transpose(1,2) * std + mean
     elif normalize == 'minmax':
         minn, maxx = data_preprocessor.load_min_max()
-        valid_original_gt = valid_gt * (maxx - minn) + minn
-        test_original_gt = test_gt * (maxx - minn) + minn
     elif normalize == 'zeromean':
         std, mean = data_preprocessor.load_std_and_mean()
-        valid_original_gt = valid_gt+ mean
-        test_original_gt = test_gt+ mean
     elif normalize is None:
         pass
     else:
@@ -282,6 +276,7 @@ if __name__ == '__main__':
         pbar_iter = tqdm(total=total_iters, ascii=True, dynamic_ncols=True)
         pbar_iter.set_description('testing')
         output_list = []
+        gt_list=[]
         with torch.no_grad():
             model.eval()
             for input_batch, tgt, gt in test_loader:
@@ -289,20 +284,25 @@ if __name__ == '__main__':
                     input_batch = input_batch.to(device)
                     tgt = tgt.to(device)
                 output_list.append(model(input_batch, tgt).cpu())
+                gt_list.append(gt)
                 pbar_iter.update(1)
         pbar_iter.close()
         output = torch.cat(output_list, dim=0)
+        ground_truth=torch.cat(gt_list,dim=0)
         # print(output.shape)
         # exit()
         if normalize == 'std':
             output_original = output.transpose(1, 2) * std + mean
-            loss_original = loss_fn(output_original, test_original_gt)
+            ground_truth=ground_truth.transpose(1,2)*std+mean
+            loss_original = loss_fn(output_original, ground_truth)
         elif normalize == 'minmax':
             output_original = output.transpose(1, 2) * (maxx - minn) + minn
-            loss_original = loss_fn(output_original, test_original_gt)
+            ground_truth = ground_truth.transpose(1, 2) * (maxx - minn) + minn
+            loss_original = loss_fn(output_original, ground_truth)
         elif normalize == 'zeromean':
             output_original = output.transpose(1, 2) + mean
-            loss_original = loss_fn(output_original, test_original_gt)
+            ground_truth = ground_truth.transpose(1, 2) + mean
+            loss_original = loss_fn(output_original, ground_truth)
 
         loss = loss_fn(output, test_gt)
         if multiGPU:

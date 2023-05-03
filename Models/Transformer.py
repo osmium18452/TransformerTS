@@ -6,7 +6,7 @@ class Transformer(nn.Module):
     def __init__(self, input_size, n_heads=8, num_enc_layers=6, num_dec_layers=6, batch_first=True):
         super(Transformer, self).__init__()
         self.n_heads=n_heads
-        self.transformer = nn.Transformer(d_model=input_size*n_heads, batch_first=True, nhead=n_heads,
+        self.transformer = nn.Transformer(d_model=input_size*n_heads, batch_first=batch_first, nhead=n_heads,
                                           num_encoder_layers=num_enc_layers,num_decoder_layers=num_dec_layers)
         self.linear=nn.Linear(input_size*n_heads,input_size)
 
