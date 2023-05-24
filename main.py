@@ -322,5 +322,5 @@ if __name__ == '__main__':
             print('\033[32mtest loss: %.4f\033[0m' % (loss.item()))
             f = open(os.path.join(save_path, 'test_loss.txt'), 'a')
             print(args, file=f)
-            print('test loss: %.4f' % (loss.item()), file=f)
+            print('\033[31mtest loss: %.4f\033[0m' % (loss.item()), file=f)
             f.close()
