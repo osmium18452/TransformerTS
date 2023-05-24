@@ -6,7 +6,7 @@ import platform
 import random
 
 from DataPreprocessor import DataPreprocessor, TSDataset
-from Models.Transformer import Transformer
+from Models.Transformer import Transformer, Transformer_v1
 import numpy as np
 import torch
 from tqdm import tqdm
@@ -19,7 +19,7 @@ from torch.utils.data.distributed import DistributedSampler
 # TODO: MULTI LAYER LSTM
 # TODO: MULTI HEAD GNN
 
-# torchrun --nproc_per_node=8 --nnodes=1 main.py -GMN minmax -c 6 -a 0.1 -t 2 -m I -e 3 --stride 1
+# torchrun --nproc_per_node=6 --nnodes=1 main.py -GMN std -c 6 -a 0.1 -t 2 -m I -e 3 --stride 1 -C 2,3,4,5,6,7
 # torchrun --nproc_per_node=8 --nnodes=1 main.py -GMfN minmax -c 6 -a 0.1 -t 2 -m I -e 3 --stride 1
 # torchrun --nproc_per_node=8 --nnodes=1 main.py -GfMN std -a 0.1 -b 6 -s save/23.04.21 -t 4 -m L -e 60 -i 48 -p 400
 
@@ -30,6 +30,7 @@ if __name__ == '__main__':
     parser.add_argument('-C', '--CUDA_VISIBLE_DEVICES', type=str, default='0,1,2,3,4,5,6,7')
     parser.add_argument('-c', '--cuda_device', type=int, default=0)
     parser.add_argument('-d', '--dataset', type=str, default='wht')
+    parser.add_argument('-D', '--d_model', type=int, default=512)
     parser.add_argument('-e', '--epoch', type=int, default=100)
     parser.add_argument('-F', '--fixed_seed', action='store_true')
     parser.add_argument('-f', '--fudan', action='store_true')
@@ -39,7 +40,7 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--input_window', type=int, default=60)
     parser.add_argument('-l', '--lr', type=float, default=0.001)
     parser.add_argument('-M', '--multiGPU', action='store_true')
-    parser.add_argument('-o', '--model', type=str, default='cgt', help='cgt, transformer')
+    parser.add_argument('-o', '--model', type=str, default='v1', help='v1, v2')
     parser.add_argument('-n', '--nhead', type=int, default=8)
     parser.add_argument('-N', '--normalize', type=str, default=None, help='std, minmax, zeromean')
     parser.add_argument('-P', '--positional_encoding', type=str, default='sinusodial', help='zero,sin,sinusodial')
@@ -86,6 +87,7 @@ if __name__ == '__main__':
     fudan = args.fudan
     validate = not args.dont_validate
     which_model = args.model
+    d_model = args.d_model
 
     if (multiGPU and local_rank == 0) or not multiGPU:
         if not os.path.exists(save_path):
@@ -151,7 +153,10 @@ if __name__ == '__main__':
     if use_cuda:
         causal_map = causal_map.to(device)
     sensors = data_preprocessor.load_num_sensors()
-    model = Transformer(sensors, n_heads=nhead)
+    if which_model == 'v1':
+        model = Transformer_v1(sensors, sensors, n_heads=nhead)
+    else:
+        model = Transformer(sensors, sensors, d_model=d_model, n_heads=nhead)
     if use_cuda:
         model.to(device)
 
@@ -235,7 +240,7 @@ if __name__ == '__main__':
                     if use_cuda:
                         input_batch = input_batch.to(device)
                         tgt = tgt.to(device)
-                    output_list.append(model(input_batch,  tgt).cpu())
+                    output_list.append(model(input_batch, tgt).cpu())
                     gt_list.append(gt)
                     pbar_iter.update(1)
                 pbar_iter.close()
@@ -276,7 +281,7 @@ if __name__ == '__main__':
         pbar_iter = tqdm(total=total_iters, ascii=True, dynamic_ncols=True)
         pbar_iter.set_description('testing')
         output_list = []
-        gt_list=[]
+        gt_list = []
         with torch.no_grad():
             model.eval()
             for input_batch, tgt, gt in test_loader:
@@ -288,12 +293,12 @@ if __name__ == '__main__':
                 pbar_iter.update(1)
         pbar_iter.close()
         output = torch.cat(output_list, dim=0)
-        ground_truth=torch.cat(gt_list,dim=0)
+        ground_truth = torch.cat(gt_list, dim=0)
         # print(output.shape)
         # exit()
         if normalize == 'std':
             output_original = output.transpose(1, 2) * std + mean
-            ground_truth=ground_truth.transpose(1,2)*std+mean
+            ground_truth = ground_truth.transpose(1, 2) * std + mean
             loss_original = loss_fn(output_original, ground_truth)
         elif normalize == 'minmax':
             output_original = output.transpose(1, 2) * (maxx - minn) + minn
@@ -308,13 +313,13 @@ if __name__ == '__main__':
         if multiGPU:
             dist.destroy_process_group()
         if normalize:
-            print('test loss: %.4f, test loss original: %.4f' % (loss.item(), loss_original.item()))
+            print('\033[32mtest loss: %.4f, test loss original: %.4f\033[0m' % (loss.item(), loss_original.item()))
             f = open(os.path.join(save_path, 'test_loss.txt'), 'a')
             print(args, file=f)
             print('test loss: %.4f, test loss original: %.4f' % (loss.item(), loss_original.item()), file=f)
             f.close()
         else:
-            print('test loss: %.4f' % (loss.item()))
+            print('\033[32mtest loss: %.4f\033[0m' % (loss.item()))
             f = open(os.path.join(save_path, 'test_loss.txt'), 'a')
             print(args, file=f)
             print('test loss: %.4f' % (loss.item()), file=f)
